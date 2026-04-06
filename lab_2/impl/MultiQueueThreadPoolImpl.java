@@ -32,14 +32,14 @@ public class MultiQueueThreadPoolImpl implements MultiQueueThreadPool {
             }
 
             for (int i = 0; i < queueCount; i++) {
-                taskQueues.add(new TaskQueueImpl());
-                queueWaiters.add(globalLock.writeLock().newCondition());
-            }
+                TaskQueue myQueue = new TaskQueueImpl();
+                Condition myWaiter = globalLock.writeLock().newCondition();
 
-            for (int i = 0; i < queueCount; i++) {
-                final int queueIdx = i;
+                taskQueues.add(myQueue);
+                queueWaiters.add(myWaiter);
+
                 for (int j = 0; j < workerPerQueue; j++) {
-                    Thread worker = new Thread(() -> routine(queueIdx), "Worker-Q" + queueIdx + "-T" + j);
+                    Thread worker = new Thread(() -> routine(myQueue, myWaiter), "Worker-Q" + i + "-T" + j);
                     workers.add(worker);
                     worker.start();
                 }
@@ -50,16 +50,13 @@ public class MultiQueueThreadPoolImpl implements MultiQueueThreadPool {
         }
     }
 
-    private void routine(int queueIndex) {
-        TaskQueue myQueue = taskQueues.get(queueIndex);
-        Condition myWaiter = queueWaiters.get(queueIndex);
-
+    private void routine(TaskQueue queue, Condition waiter) {
         while (true) {
             Task task = null;
             globalLock.writeLock().lock();
             try {
-                while (!terminated && (task = myQueue.pop()) == null) {
-                    myWaiter.awaitUninterruptibly();
+                while (!terminated && (task = queue.pop()) == null) {
+                    waiter.awaitUninterruptibly();
                 }
                 if (terminated && task == null) {
                     return;
